@@ -1,0 +1,12 @@
+style:
+  MagicNumber:
+    active: true
+    excludes: ['**/test/**']
+  ReturnCount:
+    active: false
+
+complexity:
+  TooManyFunctions:
+    active: false
+  CyclomaticComplexMethod:
+    active: false

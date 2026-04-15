@@ -26,7 +26,7 @@ Add dependency:
 
 ```kotlin
 dependencies {
-    implementation("com.github.AlexAfanasov.chat2desk-commands-wrapper:wrapper:0.1.0-SNAPSHOT")
+    implementation 'com.github.AlexAfanasov:chat2desk-commands-wrapper:main-SNAPSHOT'
 }
 ```
 
@@ -54,11 +54,6 @@ Send button preserving payload fallback behavior:
 ```kotlin
 chat.sendButton(button = buttonFromMessage, clientId = "123")
 ```
-
-## Security note
-
-v1 uses direct token mode (token in host app), same operational model as base SDK auth setup.
-Move to backend-proxy adapter when backend is ready.
 ## Android Studio Setup
 
 1. Open repository root `chat2desk-commands-wrapper` in Android Studio.

@@ -1,8 +1,8 @@
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
-    id("org.jlleitschuh.gradle.ktlint")
-    id("io.gitlab.arturbosch.detekt")
+    id("org.jlleitschuh.gradle.ktlint") version "12.1.1"
+    id("io.gitlab.arturbosch.detekt") version "1.23.6"
     id("maven-publish")
 }
 
@@ -72,7 +72,9 @@ afterEvaluate {
         publications {
             register<MavenPublication>("release") {
                 from(components["release"])
-                groupId = (project.findProperty("POM_GROUP") as String?) ?: "com.github.AlexAfanasov.chat2desk-commands-wrapper"
+                groupId =
+                    (project.findProperty("POM_GROUP") as String?)
+                        ?: "com.github.AlexAfanasov.chat2desk-commands-wrapper"
                 artifactId = "wrapper"
                 version = project.version.toString()
             }

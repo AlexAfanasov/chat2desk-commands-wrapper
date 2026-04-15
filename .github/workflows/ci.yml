@@ -8,7 +8,12 @@ on:
 
 jobs:
   verify:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+
+    runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
@@ -20,6 +25,12 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      - name: Run handoff checks
+      - name: Run handoff checks (Windows)
+        if: runner.os == 'Windows'
         shell: pwsh
         run: ./scripts/check-handoff.ps1
+
+      - name: Run handoff checks (Linux/macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: ./scripts/check-handoff.sh

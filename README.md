@@ -63,4 +63,4 @@ chat.sendButton(button = buttonFromMessage, clientId = "123")
    - `Wrapper Verify`
    - `Wrapper Unit Tests`
    - `Wrapper Publish Local`
-5. For full release gate run `scripts/check-handoff.ps1` from terminal.
+5. For full release gate run scripts/check-handoff.ps1 (Windows) or scripts/check-handoff.sh (Linux/macOS) from terminal.

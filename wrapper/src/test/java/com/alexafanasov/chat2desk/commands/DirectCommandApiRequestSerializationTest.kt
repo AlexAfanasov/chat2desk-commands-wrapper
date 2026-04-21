@@ -1,5 +1,6 @@
 package com.alexafanasov.chat2desk.commands
 
+import com.chat2desk.chat2desk_sdk.IAttachment
 import com.google.common.truth.Truth.assertThat
 import com.google.gson.JsonParser
 import kotlinx.coroutines.test.runTest
@@ -8,6 +9,8 @@ import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
+import java.io.File
+import java.nio.file.Files
 
 class DirectCommandApiRequestSerializationTest {
     private lateinit var server: MockWebServer
@@ -26,9 +29,11 @@ class DirectCommandApiRequestSerializationTest {
     @Test
     fun sendInboxCommand_serializesExpectedFields() =
         runTest {
+            // given
             server.enqueue(MockResponse().setResponseCode(200).setBody("{\"status\":\"success\"}"))
 
             val api = createApi()
+            // when
             api.sendInboxCommand(
                 command = "/status",
                 clientId = "123",
@@ -47,6 +52,7 @@ class DirectCommandApiRequestSerializationTest {
                     ),
             )
 
+            // then
             val request = server.takeRequest()
             assertThat(request.path).isEqualTo("/v1/messages/inbox")
             assertThat(request.getHeader("Authorization")).isEqualTo("token-1")
@@ -64,6 +70,7 @@ class DirectCommandApiRequestSerializationTest {
     @Test
     fun sendOperatorMessage_serializesButtonsPayloadAndKeyboard() =
         runTest {
+            // given
             server.enqueue(
                 MockResponse().setResponseCode(200).setBody(
                     """
@@ -79,6 +86,7 @@ class DirectCommandApiRequestSerializationTest {
             )
 
             val api = createApi()
+            // when
             api.sendOperatorMessage(
                 OperatorMessageRequest(
                     clientId = "321",
@@ -97,6 +105,7 @@ class DirectCommandApiRequestSerializationTest {
                 ),
             )
 
+            // then
             val request = server.takeRequest()
             assertThat(request.path).isEqualTo("/v1/messages")
 
@@ -112,13 +121,165 @@ class DirectCommandApiRequestSerializationTest {
             assertThat(keyboardButtons[0].asJsonObject.get("payload").asString).isEqualTo("payload-b")
         }
 
-    private fun createApi(): DirectCommandApi {
+    @Test
+    fun uploadAttachment_serializesMultipartAndParsesMapResponse() =
+        runTest {
+            // given
+            val temporaryFile = File.createTempFile("chat2desk-wrapper-upload", ".txt")
+            temporaryFile.writeText("data")
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(
+                    """
+                    {"photo.jpg":"https://cdn.chat2desk.com/photo.jpg"}
+                    """.trimIndent(),
+                ),
+            )
+
+            try {
+                val api = createApi()
+                // when
+                val result =
+                    api.uploadAttachment(
+                        FakeAttachment(
+                            originalName = "photo.jpg",
+                            mimeType = "image/jpeg",
+                            fileSize = temporaryFile.length().toInt(),
+                            filePath = temporaryFile.absolutePath,
+                            throwOnGetByteArray = true,
+                        ),
+                    )
+
+                // then
+                val request = server.takeRequest()
+                assertThat(request.path).isEqualTo("/upload_attach")
+                assertThat(request.getHeader("Content-Type")).contains("multipart/form-data")
+                val body = request.body.readUtf8()
+                assertThat(body).contains("name=\"widget_token\"")
+                assertThat(body).contains("token-1")
+                assertThat(body).contains("name=\"attachments[]\"")
+                assertThat(body).contains("filename=\"photo.jpg\"")
+                assertThat(result.url).isEqualTo("https://cdn.chat2desk.com/photo.jpg")
+                assertThat(result.filename).isEqualTo("photo.jpg")
+            } finally {
+                temporaryFile.delete()
+            }
+        }
+
+    @Test
+    fun uploadAttachment_rejectsOversizedAttachmentBeforeRequest() =
+        runTest {
+            // given
+            val api = createApi(maxUploadBytes = 2)
+
+            // when
+            val error =
+                try {
+                    api.uploadAttachment(
+                        FakeAttachment(
+                            originalName = "big.bin",
+                            mimeType = "application/octet-stream",
+                            fileSize = 3,
+                            filePath = "C:/tmp/not-used",
+                        ),
+                    )
+                    null
+                } catch (e: IllegalArgumentException) {
+                    e
+                }
+
+            // then
+            assertThat(error).isNotNull()
+            assertThat(server.requestCount).isEqualTo(0)
+        }
+
+    @Test
+    fun uploadAttachment_rejectsMissingFilePath() =
+        runTest {
+            // given
+            val api = createApi()
+
+            // when
+            val error =
+                try {
+                    api.uploadAttachment(
+                        FakeAttachment(
+                            originalName = "missing.txt",
+                            mimeType = "text/plain",
+                            fileSize = 10,
+                            filePath = "C:/definitely-missing/missing.txt",
+                        ),
+                    )
+                    null
+                } catch (e: IllegalArgumentException) {
+                    e
+                }
+
+            // then
+            assertThat(error).isNotNull()
+            assertThat(server.requestCount).isEqualTo(0)
+        }
+
+    @Test
+    fun uploadAttachment_rejectsNonRegularFilePath() =
+        runTest {
+            // given
+            val tempDir = Files.createTempDirectory("chat2desk-wrapper-dir").toFile()
+            val api = createApi()
+
+            try {
+                // when
+                val error =
+                    try {
+                        api.uploadAttachment(
+                            FakeAttachment(
+                                originalName = "folder",
+                                mimeType = "application/octet-stream",
+                                fileSize = 1,
+                                filePath = tempDir.absolutePath,
+                            ),
+                        )
+                        null
+                    } catch (e: IllegalArgumentException) {
+                        e
+                    }
+
+                // then
+                assertThat(error).isNotNull()
+                assertThat(server.requestCount).isEqualTo(0)
+            } finally {
+                tempDir.deleteRecursively()
+            }
+        }
+
+    private fun createApi(maxUploadBytes: Long = 20L * 1024L * 1024L): DirectCommandApi {
+        val baseUrl = server.url("/").toString().removeSuffix("/")
+        val baseHost = server.url("/").host
         return DirectCommandApi(
             config =
                 Chat2DeskCommandsConfig(
-                    baseUrl = server.url("/").toString().removeSuffix("/"),
+                    baseUrl = baseUrl,
                     apiToken = "token-1",
+                    maxUploadBytes = maxUploadBytes,
+                    requireHttps = false,
+                    trustedHostSuffixes = setOf(baseHost),
                 ),
         )
+    }
+
+    private data class FakeAttachment(
+        override val originalName: String,
+        override val mimeType: String,
+        override val fileSize: Int,
+        private val filePath: String,
+        private val throwOnGetByteArray: Boolean = false,
+    ) : IAttachment {
+        override fun getFilePath(): String = filePath
+
+        override fun getByteArray(): ByteArray {
+            if (throwOnGetByteArray) {
+                error("getByteArray must not be called")
+            }
+            return byteArrayOf()
+        }
     }
 }

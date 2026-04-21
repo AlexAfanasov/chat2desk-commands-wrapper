@@ -1,6 +1,7 @@
 package com.alexafanasov.chat2desk.commands
 
 import com.chat2desk.chat2desk_sdk.AttachedFile
+import com.chat2desk.chat2desk_sdk.IAttachment
 import com.chat2desk.chat2desk_sdk.IChat2Desk
 import com.chat2desk.chat2desk_sdk.datasource.services.ConnectionState
 import com.chat2desk.chat2desk_sdk.domain.entities.CustomField
@@ -15,7 +16,7 @@ open class NoOpChat2Desk : IChat2Desk {
     override val connectionStatus: StateFlow<ConnectionState?> = MutableStateFlow(null)
     override val operator: StateFlow<Operator?> = MutableStateFlow(null)
     override val error: StateFlow<Throwable?> = MutableStateFlow(null)
-    override val clientPhone: String? = null
+    override var clientPhone: String? = null
     override val customFields: StateFlow<List<CustomField>> = MutableStateFlow(emptyList())
 
     override suspend fun flushAll() = Unit
@@ -70,6 +71,7 @@ class RecordingDelegate : NoOpChat2Desk() {
     var noArgStartCalls = 0
     var startWithClientCalls = mutableListOf<String?>()
     var sentMessages = mutableListOf<String>()
+    var sentMessagesWithAttachment = mutableListOf<Pair<String, AttachedFile>>()
 
     override suspend fun start(): String? {
         noArgStartCalls += 1
@@ -84,18 +86,37 @@ class RecordingDelegate : NoOpChat2Desk() {
     override suspend fun sendMessage(msg: String) {
         sentMessages += msg
     }
+
+    override suspend fun sendMessage(
+        msg: String,
+        attachedFile: AttachedFile,
+    ) {
+        sentMessagesWithAttachment += msg to attachedFile
+    }
 }
 
 class RecordingCommandApi : CommandApi {
-    val inboxCommands = mutableListOf<Pair<String, String>>()
+    data class RecordedInboxCommand(
+        val command: String,
+        val clientId: String,
+        val options: InboxOptions,
+    )
+
+    val inboxCommands = mutableListOf<RecordedInboxCommand>()
     val operatorMessages = mutableListOf<OperatorMessageRequest>()
+    val uploadedAttachments = mutableListOf<IAttachment>()
+    var uploadAttachmentResult: InboxAttachment =
+        InboxAttachment(
+            url = "https://cdn.chat2desk.local/attachment.jpg",
+            filename = "attachment.jpg",
+        )
 
     override suspend fun sendInboxCommand(
         command: String,
         clientId: String,
         options: InboxOptions,
     ) {
-        inboxCommands += command to clientId
+        inboxCommands += RecordedInboxCommand(command = command, clientId = clientId, options = options)
     }
 
     override suspend fun sendOperatorMessage(request: OperatorMessageRequest): OperatorMessageResult {
@@ -105,5 +126,10 @@ class RecordingCommandApi : CommandApi {
 
     override suspend fun loadMenuCommands(channelId: Long?): List<MenuCommand> {
         return listOf(MenuCommand(id = 1, text = "Root", command = "/start"))
+    }
+
+    override suspend fun uploadAttachment(attachment: IAttachment): InboxAttachment {
+        uploadedAttachments += attachment
+        return uploadAttachmentResult
     }
 }

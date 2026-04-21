@@ -27,6 +27,16 @@ if ($LASTEXITCODE -ne 0) {
     throw "Gradle build/test/quality tasks failed"
 }
 
+& $gradle :wrapper:publishToMavenLocal --no-daemon --console=plain
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to publish wrapper module to Maven Local"
+}
+
+& $gradle :sample:assemble --no-daemon --console=plain
+if ($LASTEXITCODE -ne 0) {
+    throw "Consumer smoke test failed: sample module could not resolve/compile published dependency"
+}
+
 $propertiesRaw = Get-Content (Join-Path $repoRoot "gradle.properties") -Raw
 $versionMatch = [regex]::Match($propertiesRaw, "(?m)^VERSION_NAME=(.+)$")
 if (-not $versionMatch.Success) {

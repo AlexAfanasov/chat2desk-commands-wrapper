@@ -3,11 +3,35 @@ package com.alexafanasov.chat2desk.commands
 data class Chat2DeskCommandsConfig(
     val baseUrl: String,
     val apiToken: String,
+    val uploadBaseUrl: String = baseUrl,
     val connectTimeoutMs: Long = 30_000,
     val readTimeoutMs: Long = 30_000,
     val writeTimeoutMs: Long = 30_000,
     val defaultChannelId: Long? = null,
     val defaultTransport: String? = null,
+    val maxUploadBytes: Long = DEFAULT_MAX_UPLOAD_BYTES,
+    val deleteUploadedAttachmentOnSuccess: Boolean = false,
+    val safeDeleteRoots: Set<String> = defaultSafeDeleteRoots(),
+    val requireHttps: Boolean = true,
+    val trustedHostSuffixes: Set<String> = setOf("chat2desk.com"),
+    val routeSdkSendMessageViaInboxApi: Boolean = false,
+    val externalIdResolver: ((RoutedMessageContext) -> String?)? = null,
+)
+
+private fun defaultSafeDeleteRoots(): Set<String> {
+    val tempDir = System.getProperty("java.io.tmpdir")?.trim().orEmpty()
+    return if (tempDir.isBlank()) emptySet() else setOf(tempDir)
+}
+
+private const val ONE_MEBIBYTE_IN_BYTES = 1024L * 1024L
+private const val DEFAULT_MAX_UPLOAD_SIZE_MEBIBYTES = 20L
+private const val DEFAULT_MAX_UPLOAD_BYTES = DEFAULT_MAX_UPLOAD_SIZE_MEBIBYTES * ONE_MEBIBYTE_IN_BYTES
+
+data class RoutedMessageContext(
+    val text: String,
+    val clientId: String,
+    val hasAttachment: Boolean,
+    val attachmentFileName: String?,
 )
 
 data class InboxAttachment(
@@ -77,4 +101,8 @@ class Chat2DeskCommandApiException(
     message: String,
     val statusCode: Int,
     val errorBody: String?,
+) : RuntimeException(message)
+
+class Chat2DeskCommandRoutingException(
+    message: String,
 ) : RuntimeException(message)

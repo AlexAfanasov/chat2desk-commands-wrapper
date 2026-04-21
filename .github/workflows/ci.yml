@@ -25,12 +25,12 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      - name: Run handoff checks (Windows)
+      - name: Run handoff checks + consumer smoke (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./scripts/check-handoff.ps1
 
-      - name: Run handoff checks (Linux/macOS)
+      - name: Run handoff checks + consumer smoke (Linux/macOS)
         if: runner.os != 'Windows'
         shell: bash
         run: ./scripts/check-handoff.sh

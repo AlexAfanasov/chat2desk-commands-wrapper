@@ -1,7 +1,12 @@
 .gradle/
+.gradle-user-home/
 build/
 **/build/
 .idea/
 local.properties
 *.iml
 .DS_Store
+
+# Gradle transient artifacts (locks/caches)
+**/gradle-*.zip.lck
+**/.gradle-user-home/

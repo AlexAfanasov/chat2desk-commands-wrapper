@@ -26,6 +26,6 @@ object CommandChat2DeskFactory {
                 gson = gson,
             )
 
-        return CommandChat2Desk(delegate = delegate, commands = commandApi)
+        return CommandChat2Desk(delegate = delegate, commands = commandApi, config = config)
     }
 }

@@ -1,14 +1,22 @@
 package com.alexafanasov.chat2desk.commands
 
+import com.chat2desk.chat2desk_sdk.IAttachment
 import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.File
+import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.util.concurrent.TimeUnit
 
 class DirectCommandApi(
@@ -23,11 +31,22 @@ class DirectCommandApi(
             .writeTimeout(config.writeTimeoutMs, TimeUnit.MILLISECONDS)
             .build()
 
-    private val baseUrl = config.baseUrl.trimEnd('/')
+    private val apiBaseUrl = config.baseUrl.trimEnd('/')
+    private val uploadBaseUrl = config.uploadBaseUrl.trimEnd('/')
+    private val trustedHostSuffixes =
+        config.trustedHostSuffixes
+            .map { it.trim().lowercase() }
+            .filter { it.isNotBlank() }
+            .toSet()
 
     init {
-        require(baseUrl.isNotBlank()) { "baseUrl must not be blank" }
+        require(apiBaseUrl.isNotBlank()) { "baseUrl must not be blank" }
+        require(uploadBaseUrl.isNotBlank()) { "uploadBaseUrl must not be blank" }
         require(config.apiToken.isNotBlank()) { "apiToken must not be blank" }
+        require(trustedHostSuffixes.isNotEmpty()) { "trustedHostSuffixes must not be empty" }
+
+        validateEndpointUrl(url = apiBaseUrl, fieldName = "baseUrl")
+        validateEndpointUrl(url = uploadBaseUrl, fieldName = "uploadBaseUrl")
     }
 
     override suspend fun sendInboxCommand(
@@ -135,6 +154,52 @@ class DirectCommandApi(
         }
     }
 
+    override suspend fun uploadAttachment(attachment: IAttachment): InboxAttachment {
+        val attachmentSize = attachment.fileSize.toLong()
+        require(attachmentSize > 0) { "Attachment size must be greater than zero" }
+        require(attachmentSize <= config.maxUploadBytes) {
+            "Attachment size $attachmentSize exceeds maxUploadBytes=${config.maxUploadBytes}"
+        }
+
+        val attachmentPath = attachment.getFilePath().trim()
+        require(attachmentPath.isNotBlank()) { "Attachment file path must not be blank" }
+
+        val file = File(attachmentPath)
+        require(file.exists()) { "Attachment file does not exist: $attachmentPath" }
+        require(Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+            "Attachment file path is not a regular file: $attachmentPath"
+        }
+
+        val fileName =
+            attachment.originalName
+                .takeIf { it.isNotBlank() }
+                ?: file.name.takeIf { it.isNotBlank() }
+                ?: "attachment"
+        val contentType = attachment.mimeType.toMediaTypeOrNull()
+        val uploadBody =
+            MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart("widget_token", config.apiToken)
+                .addFormDataPart(
+                    "attachments[]",
+                    fileName.replace(" ", "_"),
+                    file.asRequestBody(contentType),
+                )
+                .build()
+        val request =
+            Request.Builder()
+                .url(resolveUploadUrl("/upload_attach"))
+                .post(uploadBody)
+                .build()
+        val rawResponse = execute(request)
+        val uploadedPath = extractUploadContentPath(rawResponse)
+
+        return InboxAttachment(
+            url = uploadedPath,
+            filename = attachment.originalName.takeIf { it.isNotBlank() },
+        )
+    }
+
     private suspend fun post(
         path: String,
         payload: Map<String, Any?>,
@@ -142,7 +207,7 @@ class DirectCommandApi(
         val body = gson.toJson(payload).toRequestBody(JSON_MEDIA_TYPE)
         val request =
             Request.Builder()
-                .url(resolveUrl(path))
+                .url(resolveApiUrl(path))
                 .addHeader("Authorization", config.apiToken)
                 .post(body)
                 .build()
@@ -153,7 +218,7 @@ class DirectCommandApi(
     private suspend fun get(path: String): String {
         val request =
             Request.Builder()
-                .url(resolveUrl(path))
+                .url(resolveApiUrl(path))
                 .addHeader("Authorization", config.apiToken)
                 .get()
                 .build()
@@ -179,11 +244,43 @@ class DirectCommandApi(
         }
     }
 
-    private fun resolveUrl(path: String): String {
+    private fun resolveApiUrl(path: String): String {
+        return resolveUrl(apiBaseUrl, path)
+    }
+
+    private fun resolveUploadUrl(path: String): String {
+        return resolveUrl(uploadBaseUrl, path)
+    }
+
+    private fun resolveUrl(
+        targetBaseUrl: String,
+        path: String,
+    ): String {
         return if (path.startsWith("http://") || path.startsWith("https://")) {
             path
         } else {
-            "$baseUrl$path"
+            "$targetBaseUrl$path"
+        }
+    }
+
+    private fun validateEndpointUrl(
+        url: String,
+        fieldName: String,
+    ) {
+        val parsedUrl = url.toHttpUrlOrNull() ?: throw IllegalArgumentException("$fieldName is not a valid URL")
+        if (config.requireHttps) {
+            require(parsedUrl.isHttps) { "$fieldName must use https scheme" }
+        }
+
+        require(isTrustedHost(parsedUrl.host)) {
+            "$fieldName host '${parsedUrl.host}' is not allowed by trustedHostSuffixes"
+        }
+    }
+
+    private fun isTrustedHost(host: String): Boolean {
+        val lowercaseHost = host.lowercase()
+        return trustedHostSuffixes.any { suffix ->
+            lowercaseHost == suffix || lowercaseHost.endsWith(".$suffix")
         }
     }
 
@@ -191,6 +288,23 @@ class DirectCommandApi(
         val root = gson.fromJson(rawResponse, JsonObject::class.java)
         val data = root.get("data") ?: return null
         return data.takeIf { it.isJsonObject }?.asJsonObject
+    }
+
+    private fun extractUploadContentPath(rawResponse: String): String {
+        val root = gson.fromJson(rawResponse, JsonObject::class.java)
+        val firstEntry = checkNotNull(root.entrySet().firstOrNull()) { "upload_attach response is empty" }
+        check(!firstEntry.value.isJsonNull && firstEntry.value.isJsonPrimitive) {
+            "upload_attach response has invalid format"
+        }
+
+        var contentPath = firstEntry.value.asString
+        val decodedContentPath = runCatching { gson.fromJson(contentPath, String::class.java) }.getOrNull()
+        if (!decodedContentPath.isNullOrBlank()) {
+            contentPath = decodedContentPath
+        }
+        check(contentPath.isNotBlank()) { "upload_attach response has blank path" }
+
+        return contentPath
     }
 
     private fun toButtonMap(button: CommandButton): Map<String, String> {

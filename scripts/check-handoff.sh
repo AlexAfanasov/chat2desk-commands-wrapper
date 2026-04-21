@@ -28,6 +28,10 @@ fi
 
 $GRADLE clean :wrapper:assemble :wrapper:test ktlintCheck detekt --no-daemon --console=plain
 
+$GRADLE :wrapper:publishToMavenLocal --no-daemon --console=plain
+
+$GRADLE :sample:assemble --no-daemon --console=plain
+
 VERSION_NAME="$(grep -E '^VERSION_NAME=' gradle.properties | head -n1 | cut -d'=' -f2-)"
 if [[ -z "$VERSION_NAME" ]]; then
   echo "VERSION_NAME not found in gradle.properties" >&2

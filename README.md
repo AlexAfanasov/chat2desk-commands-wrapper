@@ -37,8 +37,16 @@ val sdkChat = Chat2Desk.create(settings, context)
 
 val commandsConfig = Chat2DeskCommandsConfig(
     baseUrl = "https://api.chat2desk.com",
+    uploadBaseUrl = "https://api.chat2desk.com",
     apiToken = "<CHAT2DESK_PUBLIC_API_TOKEN>",
     defaultTransport = "external",
+    maxUploadBytes = 20L * 1024L * 1024L,
+    requireHttps = true,
+    trustedHostSuffixes = setOf("chat2desk.com"),
+    deleteUploadedAttachmentOnSuccess = false,
+    safeDeleteRoots = setOf(System.getProperty("java.io.tmpdir")),
+    routeSdkSendMessageViaInboxApi = true,
+    externalIdResolver = { context -> "client-${context.clientId}" },
 )
 
 val chat: ICommandChat2Desk = CommandChat2DeskFactory.create(
@@ -54,6 +62,21 @@ Send button preserving payload fallback behavior:
 ```kotlin
 chat.sendButton(button = buttonFromMessage, clientId = "123")
 ```
+
+When `routeSdkSendMessageViaInboxApi = true`, wrapper routes `sendMessage(...)` calls through
+`POST /v1/messages/inbox` and applies `external_id` from `externalIdResolver`.
+If routing is enabled and client id is missing, wrapper fails fast with `Chat2DeskCommandRoutingException`.
+
+Attachment routing uses file streaming from local path and enforces `maxUploadBytes`.
+By default, uploaded local files are not deleted; enable explicit cleanup with
+`deleteUploadedAttachmentOnSuccess = true` and `safeDeleteRoots`.
+
+`requireHttps` + `trustedHostSuffixes` are enforced for both `baseUrl` and `uploadBaseUrl`
+to prevent token leakage to untrusted hosts.
+
+CI also runs a consumer smoke build:
+1. `:wrapper:publishToMavenLocal`
+2. `:sample:assemble` (module consuming `group:wrapper:version` from `mavenLocal`)
 ## Android Studio Setup
 
 1. Open repository root `chat2desk-commands-wrapper` in Android Studio.

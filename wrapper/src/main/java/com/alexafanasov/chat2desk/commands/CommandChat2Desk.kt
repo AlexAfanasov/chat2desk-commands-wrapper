@@ -1,171 +1,70 @@
 package com.alexafanasov.chat2desk.commands
 
-import com.chat2desk.chat2desk_sdk.AttachedFile
 import com.chat2desk.chat2desk_sdk.IChat2Desk
-import com.chat2desk.chat2desk_sdk.domain.entities.Button
-import java.io.File
-import java.nio.file.Files
-import java.nio.file.LinkOption
-import java.nio.file.Paths
 
 class CommandChat2Desk(
     private val delegate: IChat2Desk,
-    private val commands: CommandApi,
+    private val clientEnrichmentApi: Chat2DeskClientEnrichmentApi,
     private val config: Chat2DeskCommandsConfig,
 ) : ICommandChat2Desk, IChat2Desk by delegate {
-    private var cachedClientId: String? = null
+    private val clientEnricher =
+        Chat2DeskClientEnricher(clientEnrichmentApi = clientEnrichmentApi, config = config)
+    private var sdkClientKey: String? = null
 
     override suspend fun start(): String? {
-        val startedClientId = delegate.start()
-        cacheClientId(startedClientId ?: delegate.clientPhone)
-        return startedClientId
+        config.logDiagnostic(
+            "sdk start request: delegateClientPhonePresent=${!delegate.clientPhone.isNullOrBlank()}",
+        )
+        val clientKey = delegate.start()
+        config.logDiagnostic(
+            "sdk start response: ${clientKey.presenceAndLength("clientKey")}, " +
+                "delegateClientPhonePresent=${!delegate.clientPhone.isNullOrBlank()}",
+        )
+        sdkClientKey = clientKey
+        return clientKey
     }
 
     override suspend fun start(clientId: String?): String? {
-        val startedClientId = delegate.start(clientId)
-        cacheClientId(startedClientId ?: clientId ?: delegate.clientPhone)
-        return startedClientId
+        config.logDiagnostic(
+            "sdk start(clientId) request: ${clientId.presenceAndLength("requestedClientId")}, " +
+                "delegateClientPhonePresent=${!delegate.clientPhone.isNullOrBlank()}",
+        )
+        val clientKey = delegate.start(clientId)
+        config.logDiagnostic(
+            "sdk start(clientId) response: ${clientKey.presenceAndLength("resultClientKey")}, " +
+                "delegateClientPhonePresent=${!delegate.clientPhone.isNullOrBlank()}",
+        )
+        sdkClientKey = clientKey ?: clientId
+        return clientKey
     }
 
-    override suspend fun sendInboxCommand(
-        command: String,
-        clientId: String,
-        options: InboxOptions,
+    override suspend fun sendClientParams(
+        name: String,
+        phone: String,
+        fieldSet: Map<Int, String>,
     ) {
-        commands.sendInboxCommand(command = command, clientId = clientId, options = options)
-    }
-
-    override suspend fun sendOperatorMessage(request: OperatorMessageRequest): OperatorMessageResult {
-        return commands.sendOperatorMessage(request)
-    }
-
-    override suspend fun loadMenuCommands(channelId: Long?): List<MenuCommand> {
-        return commands.loadMenuCommands(channelId)
-    }
-
-    override suspend fun sendMessage(msg: String) {
-        if (!config.routeSdkSendMessageViaInboxApi) {
-            delegate.sendMessage(msg)
+        config.logDiagnostic(
+            "sdk sendClientParams request: namePresent=${name.isNotBlank()}, phone=${phone.maskedPhone()}, " +
+                "fieldSetSize=${fieldSet.size}, fieldSetKeys=${fieldSet.keys.sorted()}",
+        )
+        delegate.sendClientParams(name = name, phone = phone, fieldSet = fieldSet)
+        config.logDiagnostic(
+            "sdk sendClientParams response: delegateCompleted=true, phone=${phone.maskedPhone()}, " +
+                "fieldSetSize=${fieldSet.size}",
+        )
+        if (!config.enrichClientOnSendClientParams) {
             return
         }
 
-        val clientId = resolveRoutingClientId()
-        val externalId =
-            resolveExternalId(
-                RoutedMessageContext(
-                    text = msg,
-                    clientId = clientId,
-                    hasAttachment = false,
-                    attachmentFileName = null,
-                ),
-            )
-
-        commands.sendInboxCommand(
-            command = msg,
-            clientId = clientId,
-            options = InboxOptions(externalId = externalId),
+        config.logDiagnostic("client enrichment dispatch: phone=${phone.maskedPhone()}")
+        clientEnricher.enrich(
+            ClientExternalIdContext(
+                name = name,
+                phone = phone,
+                fieldSet = fieldSet,
+                sdkClientKey = sdkClientKey,
+            ),
         )
-    }
-
-    override suspend fun sendMessage(
-        msg: String,
-        attachedFile: AttachedFile,
-    ) {
-        if (!config.routeSdkSendMessageViaInboxApi) {
-            delegate.sendMessage(msg, attachedFile)
-            return
-        }
-
-        val clientId = resolveRoutingClientId()
-        val externalId =
-            resolveExternalId(
-                RoutedMessageContext(
-                    text = msg,
-                    clientId = clientId,
-                    hasAttachment = true,
-                    attachmentFileName = attachedFile.originalName.takeIf { it.isNotBlank() },
-                ),
-            )
-        val uploadedAttachment = commands.uploadAttachment(attachedFile)
-        tryDeleteAttachmentFile(attachedFile)
-
-        commands.sendInboxCommand(
-            command = msg,
-            clientId = clientId,
-            options = InboxOptions(externalId = externalId, attachments = listOf(uploadedAttachment)),
-        )
-    }
-
-    override suspend fun sendButton(
-        button: Button,
-        clientId: String,
-    ) {
-        val commandText = button.payload?.takeIf { it.isNotBlank() } ?: button.text
-        val externalId =
-            resolveExternalId(
-                RoutedMessageContext(
-                    text = commandText,
-                    clientId = clientId,
-                    hasAttachment = false,
-                    attachmentFileName = null,
-                ),
-            )
-        sendInboxCommand(
-            command = commandText,
-            clientId = clientId,
-            options = InboxOptions(externalId = externalId),
-        )
-    }
-
-    private fun resolveRoutingClientId(): String {
-        delegate.clientPhone?.takeIf { it.isNotBlank() }?.let { clientId ->
-            cacheClientId(clientId)
-            return clientId
-        }
-
-        cachedClientId?.takeIf { it.isNotBlank() }?.let { clientId ->
-            return clientId
-        }
-
-        throw Chat2DeskCommandRoutingException(
-            "sendMessage routing is enabled, but clientId is missing. Call start(...) first.",
-        )
-    }
-
-    private fun resolveExternalId(context: RoutedMessageContext): String? {
-        return config.externalIdResolver?.invoke(context)?.takeIf { it.isNotBlank() }
-    }
-
-    private fun cacheClientId(clientId: String?) {
-        if (!clientId.isNullOrBlank()) {
-            cachedClientId = clientId
-        }
-    }
-
-    private fun tryDeleteAttachmentFile(attachedFile: AttachedFile) {
-        if (!config.deleteUploadedAttachmentOnSuccess) return
-
-        val filePath = attachedFile.getFilePath().trim()
-        if (filePath.isBlank()) return
-
-        val rawPath = runCatching { Paths.get(filePath).toAbsolutePath().normalize() }.getOrNull() ?: return
-        if (!Files.isRegularFile(rawPath, LinkOption.NOFOLLOW_LINKS)) return
-
-        val canonicalTargetPath =
-            runCatching { rawPath.toFile().canonicalFile.toPath().normalize() }.getOrNull() ?: return
-        val safeRoots =
-            config.safeDeleteRoots
-                .asSequence()
-                .map { it.trim() }
-                .filter { it.isNotBlank() }
-                .mapNotNull { root ->
-                    runCatching { File(root).canonicalFile.toPath().normalize() }.getOrNull()
-                }
-                .toList()
-        if (safeRoots.none { root -> canonicalTargetPath.startsWith(root) }) return
-
-        runCatching {
-            Files.deleteIfExists(canonicalTargetPath)
-        }
+        config.logDiagnostic("client enrichment dispatch finished: phone=${phone.maskedPhone()}")
     }
 }

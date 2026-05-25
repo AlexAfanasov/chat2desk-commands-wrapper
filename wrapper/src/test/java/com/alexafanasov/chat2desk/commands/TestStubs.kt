@@ -1,7 +1,6 @@
 package com.alexafanasov.chat2desk.commands
 
 import com.chat2desk.chat2desk_sdk.AttachedFile
-import com.chat2desk.chat2desk_sdk.IAttachment
 import com.chat2desk.chat2desk_sdk.IChat2Desk
 import com.chat2desk.chat2desk_sdk.datasource.services.ConnectionState
 import com.chat2desk.chat2desk_sdk.domain.entities.CustomField
@@ -72,8 +71,10 @@ class RecordingDelegate : NoOpChat2Desk() {
     var startWithClientCalls = mutableListOf<String?>()
     var sentMessages = mutableListOf<String>()
     var sentMessagesWithAttachment = mutableListOf<Pair<String, AttachedFile>>()
+    var sentClientParams = mutableListOf<ClientExternalIdContext>()
+    var eventLog = mutableListOf<String>()
 
-    override suspend fun start(): String? {
+    override suspend fun start(): String {
         noArgStartCalls += 1
         return "client-from-noarg"
     }
@@ -85,6 +86,7 @@ class RecordingDelegate : NoOpChat2Desk() {
 
     override suspend fun sendMessage(msg: String) {
         sentMessages += msg
+        eventLog += "delegate.sendMessage"
     }
 
     override suspend fun sendMessage(
@@ -92,44 +94,40 @@ class RecordingDelegate : NoOpChat2Desk() {
         attachedFile: AttachedFile,
     ) {
         sentMessagesWithAttachment += msg to attachedFile
+        eventLog += "delegate.sendMessageWithAttachment"
+    }
+
+    override suspend fun sendClientParams(
+        name: String,
+        phone: String,
+        fieldSet: Map<Int, String>,
+    ) {
+        sentClientParams += ClientExternalIdContext(name = name, phone = phone, fieldSet = fieldSet)
+        eventLog += "delegate.sendClientParams"
     }
 }
 
-class RecordingCommandApi : CommandApi {
-    data class RecordedInboxCommand(
-        val command: String,
-        val clientId: String,
-        val options: InboxOptions,
-    )
+class RecordingClientEnrichmentApi : Chat2DeskClientEnrichmentApi {
+    val resolveStartedClientCalls = mutableListOf<String>()
+    val updateClientExternalIdCalls = mutableListOf<Pair<Long, String>>()
+    val eventLog = mutableListOf<String>()
+    var startedClient: PublicClient? = null
+    var updatedClient: PublicClient? = null
+    var updateClientExternalIdError: Throwable? = null
 
-    val inboxCommands = mutableListOf<RecordedInboxCommand>()
-    val operatorMessages = mutableListOf<OperatorMessageRequest>()
-    val uploadedAttachments = mutableListOf<IAttachment>()
-    var uploadAttachmentResult: InboxAttachment =
-        InboxAttachment(
-            url = "https://cdn.chat2desk.local/attachment.jpg",
-            filename = "attachment.jpg",
-        )
-
-    override suspend fun sendInboxCommand(
-        command: String,
-        clientId: String,
-        options: InboxOptions,
-    ) {
-        inboxCommands += RecordedInboxCommand(command = command, clientId = clientId, options = options)
+    override suspend fun resolveStartedClient(clientKey: String): PublicClient? {
+        resolveStartedClientCalls += clientKey
+        eventLog += "api.resolveStartedClient"
+        return startedClient
     }
 
-    override suspend fun sendOperatorMessage(request: OperatorMessageRequest): OperatorMessageResult {
-        operatorMessages += request
-        return OperatorMessageResult(messageId = 1L)
-    }
-
-    override suspend fun loadMenuCommands(channelId: Long?): List<MenuCommand> {
-        return listOf(MenuCommand(id = 1, text = "Root", command = "/start"))
-    }
-
-    override suspend fun uploadAttachment(attachment: IAttachment): InboxAttachment {
-        uploadedAttachments += attachment
-        return uploadAttachmentResult
+    override suspend fun updateClientExternalId(
+        clientId: Long,
+        externalId: String,
+    ): PublicClient? {
+        eventLog += "api.updateClientExternalId"
+        updateClientExternalIdError?.let { throw it }
+        updateClientExternalIdCalls += clientId to externalId
+        return updatedClient
     }
 }

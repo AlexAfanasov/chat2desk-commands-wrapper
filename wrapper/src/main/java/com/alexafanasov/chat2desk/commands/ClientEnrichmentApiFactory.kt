@@ -4,12 +4,18 @@ import com.chat2desk.chat2desk_sdk.IChat2Desk
 import com.google.gson.Gson
 import okhttp3.OkHttpClient
 
-object CommandApiFactory {
+object ClientEnrichmentApiFactory {
     fun createDirect(
         config: Chat2DeskCommandsConfig,
         httpClient: OkHttpClient? = null,
         gson: Gson = Gson(),
-    ): CommandApi = DirectCommandApi(config = config, httpClient = httpClient, gson = gson)
+    ): Chat2DeskClientEnrichmentApi {
+        return DirectClientEnrichmentApi(
+            config = config,
+            httpClient = httpClient,
+            gson = gson,
+        )
+    }
 }
 
 object CommandChat2DeskFactory {
@@ -19,13 +25,13 @@ object CommandChat2DeskFactory {
         httpClient: OkHttpClient? = null,
         gson: Gson = Gson(),
     ): ICommandChat2Desk {
-        val commandApi =
-            CommandApiFactory.createDirect(
+        val clientEnrichmentApi =
+            ClientEnrichmentApiFactory.createDirect(
                 config = config,
                 httpClient = httpClient,
                 gson = gson,
             )
 
-        return CommandChat2Desk(delegate = delegate, commands = commandApi, config = config)
+        return CommandChat2Desk(delegate = delegate, clientEnrichmentApi = clientEnrichmentApi, config = config)
     }
 }

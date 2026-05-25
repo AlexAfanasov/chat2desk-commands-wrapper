@@ -33,12 +33,18 @@ dependencies {
 ## Usage
 
 ```kotlin
-val sdkChat = Chat2Desk.create(settings, context)
+val sdkSettings = Settings(
+    authToken = "<CHAT2DESK_WIDGET_TOKEN>",
+    baseHost = "https://livechatv2.chat2desk.com",
+    wsHost = "wss://livechatv2.chat2desk.com",
+    storageHost = "https://storage.chat2desk.com/",
+)
+val sdkChat = Chat2Desk.create(sdkSettings, context)
 
-val commandsConfig = Chat2DeskCommandsConfig(
+val commandsConfig = Chat2DeskCommandsConfig.publicApi(
     baseUrl = "https://api.chat2desk.com",
     uploadBaseUrl = "https://api.chat2desk.com",
-    apiToken = "<CHAT2DESK_PUBLIC_API_TOKEN>",
+    publicApiToken = "<CHAT2DESK_PUBLIC_API_TOKEN>",
     defaultTransport = "external",
     maxUploadBytes = 20L * 1024L * 1024L,
     requireHttps = true,
@@ -46,6 +52,10 @@ val commandsConfig = Chat2DeskCommandsConfig(
     deleteUploadedAttachmentOnSuccess = false,
     safeDeleteRoots = setOf(System.getProperty("java.io.tmpdir")),
     routeSdkSendMessageViaInboxApi = true,
+    routedSendFailureMode = RoutedSendFailureMode.SWALLOW,
+    routedSendFailureHandler = { error ->
+        // Log statusCode and errorBody in debug builds if needed. Never log tokens.
+    },
     externalIdResolver = { context -> "client-${context.clientId}" },
 )
 
@@ -57,6 +67,11 @@ val chat: ICommandChat2Desk = CommandChat2DeskFactory.create(
 chat.sendInboxCommand(command = "/status", clientId = "123")
 ```
 
+`Chat2DeskCommandsConfig.apiToken` must be a Public API token for
+`https://api.chat2desk.com/v1/...`. It is not the SDK/widget token from
+`Settings.authToken`; using the SDK/widget token for Public API requests usually returns
+`401` or `403`.
+
 Send button preserving payload fallback behavior:
 
 ```kotlin
@@ -65,7 +80,28 @@ chat.sendButton(button = buttonFromMessage, clientId = "123")
 
 When `routeSdkSendMessageViaInboxApi = true`, wrapper routes `sendMessage(...)` calls through
 `POST /v1/messages/inbox` and applies `external_id` from `externalIdResolver`.
-If routing is enabled and client id is missing, wrapper fails fast with `Chat2DeskCommandRoutingException`.
+This mode treats Chat2Desk Web API as the source of truth and uses the upstream SDK only as
+an `IChat2Desk`-compatible surface for host app UI.
+
+The SDK `client_key` is not the same value as the Web API `client_id`.
+For `POST /v1/messages/inbox`, the client identity is sent through `from_client`
+(`phone` by default from `sendClientParams`, or a custom value from `fromClientResolver`).
+For Web API reads such as `GET /v1/messages`, wrapper resolves and caches the Web API
+client id via `/v1/clients`.
+If routing is enabled and client identity is missing, wrapper fails fast with
+`Chat2DeskCommandRoutingException`.
+Public API failures from routed `sendMessage(...)` are swallowed by default to preserve SDK-like
+send behavior. Set `routedSendFailureMode = RoutedSendFailureMode.THROW` for strict diagnostics.
+
+`external_id` is sent under `extra_data.external_id` as an external business key only.
+Wrapper does not use it as a unique message id, merge key, dedupe key, or optimistic-send
+correlation key. `POST /v1/messages/inbox` may return only `{"status":"success"}`, so wrapper
+immediately adds an optimistic SDK `Message` with a local id and then syncs through
+`GET /v1/messages`, where Web API message ids become the source of truth.
+
+`defaultChannelId` is nullable. Leave it `null` when the host app should let wrapper resolve an
+external channel through `/v1/channels`. Do not use `0` as a sentinel channel id; wrapper filters
+non-positive ids and never sends `channel_id: 0`.
 
 Attachment routing uses file streaming from local path and enforces `maxUploadBytes`.
 By default, uploaded local files are not deleted; enable explicit cleanup with

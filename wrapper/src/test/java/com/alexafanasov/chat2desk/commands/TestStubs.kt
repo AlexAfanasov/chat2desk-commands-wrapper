@@ -72,6 +72,10 @@ class RecordingDelegate : NoOpChat2Desk() {
     var startWithClientCalls = mutableListOf<String?>()
     var sentMessages = mutableListOf<String>()
     var sentMessagesWithAttachment = mutableListOf<Pair<String, AttachedFile>>()
+    var readCalls = 0
+    var deliveryCalls = 0
+    var deliveryIdCalls = mutableListOf<String>()
+    var sendClientParamsCalls = mutableListOf<Triple<String, String, Map<Int, String>>>()
 
     override suspend fun start(): String? {
         noArgStartCalls += 1
@@ -93,6 +97,26 @@ class RecordingDelegate : NoOpChat2Desk() {
     ) {
         sentMessagesWithAttachment += msg to attachedFile
     }
+
+    override suspend fun read() {
+        readCalls += 1
+    }
+
+    override suspend fun delivery() {
+        deliveryCalls += 1
+    }
+
+    override suspend fun delivery(id: String) {
+        deliveryIdCalls += id
+    }
+
+    override suspend fun sendClientParams(
+        name: String,
+        phone: String,
+        fieldSet: Map<Int, String>,
+    ) {
+        sendClientParamsCalls += Triple(name, phone, fieldSet)
+    }
 }
 
 class RecordingCommandApi : CommandApi {
@@ -105,6 +129,15 @@ class RecordingCommandApi : CommandApi {
     val inboxCommands = mutableListOf<RecordedInboxCommand>()
     val operatorMessages = mutableListOf<OperatorMessageRequest>()
     val uploadedAttachments = mutableListOf<IAttachment>()
+    val loadedMessages = mutableListOf<PublicMessagesRequest>()
+    val lookedUpClients = mutableListOf<PublicClientLookupRequest>()
+    val createdClients = mutableListOf<PublicClientCreateRequest>()
+    var loadedChannelsCalls = 0
+    var loadMessagesResult: List<Message> = emptyList()
+    var findClientResult: PublicClient? = PublicClient(id = 146339237, phone = "79991112233")
+    var createClientResult: PublicClient = PublicClient(id = 146339238, phone = "79991112233")
+    var loadChannelsResult: List<PublicChannel> = listOf(PublicChannel(id = 121177, transport = "external"))
+    var sendInboxCommandError: Chat2DeskCommandApiException? = null
     var uploadAttachmentResult: InboxAttachment =
         InboxAttachment(
             url = "https://cdn.chat2desk.local/attachment.jpg",
@@ -116,6 +149,7 @@ class RecordingCommandApi : CommandApi {
         clientId: String,
         options: InboxOptions,
     ) {
+        sendInboxCommandError?.let { throw it }
         inboxCommands += RecordedInboxCommand(command = command, clientId = clientId, options = options)
     }
 
@@ -131,5 +165,25 @@ class RecordingCommandApi : CommandApi {
     override suspend fun uploadAttachment(attachment: IAttachment): InboxAttachment {
         uploadedAttachments += attachment
         return uploadAttachmentResult
+    }
+
+    override suspend fun loadMessages(request: PublicMessagesRequest): List<Message> {
+        loadedMessages += request
+        return loadMessagesResult
+    }
+
+    override suspend fun findClientByPhone(request: PublicClientLookupRequest): PublicClient? {
+        lookedUpClients += request
+        return findClientResult
+    }
+
+    override suspend fun createClient(request: PublicClientCreateRequest): PublicClient {
+        createdClients += request
+        return createClientResult
+    }
+
+    override suspend fun loadChannels(): List<PublicChannel> {
+        loadedChannelsCalls += 1
+        return loadChannelsResult
     }
 }

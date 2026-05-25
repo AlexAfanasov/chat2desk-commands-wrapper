@@ -26,7 +26,7 @@ class DirectCommandApiIntegrationTest {
                 config =
                     Chat2DeskCommandsConfig(
                         baseUrl = baseUrl,
-                        apiToken = "token-1",
+                        apiToken = "public-api-token-1",
                         requireHttps = false,
                         trustedHostSuffixes = setOf(baseHost),
                     ),
@@ -71,7 +71,8 @@ class DirectCommandApiIntegrationTest {
     fun sendInboxCommand_throwsOnHttpError() =
         runTest {
             // given
-            server.enqueue(MockResponse().setResponseCode(400).setBody("{\"status\":\"error\"}"))
+            val responseBody = "{\"status\":\"error\",\"message\":\"bad client_id\"}"
+            server.enqueue(MockResponse().setResponseCode(400).setBody(responseBody))
 
             // when
             val error =
@@ -85,6 +86,31 @@ class DirectCommandApiIntegrationTest {
             // then
             assertThat(error).isNotNull()
             assertThat(error!!.statusCode).isEqualTo(400)
+            assertThat(error.errorBody).isEqualTo(responseBody)
+            assertThat(error.message).contains(responseBody)
+        }
+
+    @Test
+    fun sendInboxCommand_throwsForbiddenWithResponseBody() =
+        runTest {
+            // given
+            val responseBody = "{\"status\":\"error\",\"message\":\"forbidden\"}"
+            server.enqueue(MockResponse().setResponseCode(403).setBody(responseBody))
+
+            // when
+            val error =
+                try {
+                    api.sendInboxCommand(command = "/status", clientId = "1")
+                    null
+                } catch (e: Chat2DeskCommandApiException) {
+                    e
+                }
+
+            // then
+            assertThat(error).isNotNull()
+            assertThat(error!!.statusCode).isEqualTo(403)
+            assertThat(error.errorBody).isEqualTo(responseBody)
+            assertThat(error.message).contains(responseBody)
         }
 
     @Test
@@ -152,7 +178,7 @@ class DirectCommandApiIntegrationTest {
                     config =
                         Chat2DeskCommandsConfig(
                             baseUrl = "http://localhost:8080",
-                            apiToken = "token-1",
+                            apiToken = "public-api-token-1",
                             requireHttps = true,
                             trustedHostSuffixes = setOf("localhost"),
                         ),
@@ -175,7 +201,7 @@ class DirectCommandApiIntegrationTest {
                     config =
                         Chat2DeskCommandsConfig(
                             baseUrl = "https://evil.example.org",
-                            apiToken = "token-1",
+                            apiToken = "public-api-token-1",
                             trustedHostSuffixes = setOf("chat2desk.com"),
                         ),
                 )
@@ -202,7 +228,7 @@ class DirectCommandApiIntegrationTest {
                         Chat2DeskCommandsConfig(
                             baseUrl = server.url("/").toString().removeSuffix("/"),
                             uploadBaseUrl = uploadServer.url("/").toString().removeSuffix("/"),
-                            apiToken = "token-1",
+                            apiToken = "public-api-token-1",
                             requireHttps = false,
                             trustedHostSuffixes = setOf(server.url("/").host, uploadServer.url("/").host),
                         ),

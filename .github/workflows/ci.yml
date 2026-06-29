@@ -36,7 +36,7 @@ jobs:
         run: ./scripts/check-handoff.sh
 
   ios-kmp:
-    runs-on: macos-latest
+    runs-on: macos-15
 
     steps:
       - uses: actions/checkout@v6
@@ -51,6 +51,7 @@ jobs:
       - name: Compile iOS KMP targets
         shell: bash
         run: |
+          chmod +x ./gradlew
           ./gradlew \
             :wrapper:metadataCommonMainClasses \
             :wrapper:compileKotlinIosX64 \

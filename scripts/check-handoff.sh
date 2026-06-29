@@ -28,6 +28,15 @@ fi
 
 $GRADLE clean :wrapper:assemble :wrapper:test ktlintCheck detekt --no-daemon --console=plain
 
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  $GRADLE \
+    :wrapper:compileKotlinIosX64 \
+    :wrapper:compileKotlinIosArm64 \
+    :wrapper:compileKotlinIosSimulatorArm64 \
+    --no-daemon \
+    --console=plain
+fi
+
 $GRADLE :wrapper:publishToMavenLocal --no-daemon --console=plain
 
 $GRADLE :sample:assemble --no-daemon --console=plain

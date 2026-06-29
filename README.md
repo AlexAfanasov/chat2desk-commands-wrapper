@@ -110,6 +110,26 @@ val chat = CommandChat2DeskFactory.create(
 The wrapper does not replace or reimplement the Chat2Desk SDK. It only adds the
 same enrichment step around the SDK instance supplied by the app.
 
+## Manual iOS XCFramework build
+
+The repository provides a manual GitHub Actions workflow that builds
+`Chat2DeskCommandsWrapper.xcframework` on a macOS runner.
+
+Steps:
+
+1. Open GitHub Actions.
+2. Select `Build iOS XCFramework`.
+3. Click `Run workflow`.
+4. Choose `debug` or `release`.
+5. Download the uploaded artifact:
+   - `Chat2DeskCommandsWrapper-debug-xcframework`
+   - or `Chat2DeskCommandsWrapper-release-xcframework`
+6. Unzip it.
+7. Add `Chat2DeskCommandsWrapper.xcframework` to the Xcode project.
+
+Artifacts are retained for 14 days. The artifact is intended for manual iOS
+smoke testing. It is not a final CocoaPods/SPM publication flow.
+
 ## Migration from Android-only wrapper
 
 Most Android callers can keep using:

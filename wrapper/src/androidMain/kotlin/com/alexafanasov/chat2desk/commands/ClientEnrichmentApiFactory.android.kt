@@ -22,8 +22,9 @@ actual object ClientEnrichmentApiFactory {
     }
 
     @Deprecated(
-        message = "Use createDirect(config, httpClient: io.ktor.client.HttpClient?) instead. " +
-            "The OkHttpClient parameter is adapted through Ktor OkHttp engine on Android; Gson is ignored.",
+        message =
+            "Use createDirect(config, httpClient: io.ktor.client.HttpClient?) instead. " +
+                "The OkHttpClient parameter is adapted through Ktor OkHttp engine on Android; Gson is ignored.",
         replaceWith = ReplaceWith("createDirect(config = config, httpClient = null)"),
     )
     fun createDirect(
@@ -60,8 +61,9 @@ actual object CommandChat2DeskFactory {
     }
 
     @Deprecated(
-        message = "Use create(delegate, config, httpClient: io.ktor.client.HttpClient?) instead. " +
-            "The OkHttpClient parameter is adapted through Ktor OkHttp engine on Android; Gson is ignored.",
+        message =
+            "Use create(delegate, config, httpClient: io.ktor.client.HttpClient?) instead. " +
+                "The OkHttpClient parameter is adapted through Ktor OkHttp engine on Android; Gson is ignored.",
         replaceWith = ReplaceWith("create(delegate = delegate, config = config, httpClient = null)"),
     )
     fun create(

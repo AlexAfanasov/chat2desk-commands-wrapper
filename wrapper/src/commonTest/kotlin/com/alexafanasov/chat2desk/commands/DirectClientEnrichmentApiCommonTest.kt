@@ -30,15 +30,15 @@ class DirectClientEnrichmentApiCommonTest {
                     requests = requests,
                     responseBody =
                         """
-                            {
-                              "client": {
-                                "clientID": 772337111,
-                                "phone": "79991112233",
-                                "name": "Jane",
-                                "custom_fields": {"1": "premium"}
-                              }
-                            }
-                        """.trimIndent(),
+                        |{
+                        |  "client": {
+                        |    "clientID": 772337111,
+                        |    "phone": "79991112233",
+                        |    "name": "Jane",
+                        |    "custom_fields": {"1": "premium"}
+                        |  }
+                        |}
+                        """.trimMargin(),
                 )
 
             val result = api.resolveStartedClient("client key with spaces")
@@ -199,12 +199,11 @@ class DirectClientEnrichmentApiCommonTest {
     private fun MockRequestHandleScope.respondJson(
         body: String,
         statusCode: HttpStatusCode,
-    ) =
-        respond(
-            content = ByteReadChannel(body),
-            status = statusCode,
-            headers = headersOf(HttpHeaders.ContentType, "application/json"),
-        )
+    ) = respond(
+        content = ByteReadChannel(body),
+        status = statusCode,
+        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+    )
 
     private fun mockClient(): HttpClient {
         return HttpClient(MockEngine) {

@@ -1,8 +1,8 @@
 package com.alexafanasov.chat2desk.commands
 
 import com.chat2desk.chat2desk_sdk.AttachedFile
-import com.google.gson.Gson
 import com.google.common.truth.Truth.assertThat
+import com.google.gson.Gson
 import kotlinx.coroutines.test.runTest
 import okhttp3.OkHttpClient
 import org.junit.Test

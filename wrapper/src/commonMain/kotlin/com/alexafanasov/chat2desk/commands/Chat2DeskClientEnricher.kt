@@ -25,7 +25,7 @@ class Chat2DeskClientEnricher(
         } catch (e: Exception) {
             config.enrichmentFailureHandler?.invoke(e)
             logDiagnostic(
-                "client enrichment failed: type=${e::class.java.simpleName}, message=${e.message.orEmpty()}",
+                "client enrichment failed: type=${e::class.simpleName}, message=${e.message.orEmpty()}",
             )
 
             if (config.enrichmentFailureMode == EnrichmentFailureMode.THROW) {

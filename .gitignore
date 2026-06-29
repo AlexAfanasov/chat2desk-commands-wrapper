@@ -1,11 +1,13 @@
 .gradle/
 .gradle-user-home/
+.kotlin/metadata/
 build/
 **/build/
 .idea/
 local.properties
 *.iml
 .DS_Store
+scripts/
 
 # Gradle transient artifacts (locks/caches)
 **/gradle-*.zip.lck

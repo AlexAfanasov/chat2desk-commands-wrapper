@@ -1,12 +1,28 @@
 package com.alexafanasov.chat2desk.commands
 
 import com.chat2desk.chat2desk_sdk.AttachedFile
+import com.google.gson.Gson
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.test.runTest
+import okhttp3.OkHttpClient
 import org.junit.Test
 import java.io.File
 
 class CommandChat2DeskDelegationTest {
+    @Suppress("DEPRECATION")
+    @Test
+    fun factory_acceptsDeprecatedOkHttpGsonCompatibilityOverload() {
+        val wrapped =
+            CommandChat2DeskFactory.create(
+                delegate = RecordingDelegate(),
+                config = config(),
+                httpClient = OkHttpClient(),
+                gson = Gson(),
+            )
+
+        assertThat(wrapped).isInstanceOf(ICommandChat2Desk::class.java)
+    }
+
     @Test
     fun sendMessage_delegatesToSdkAndDoesNotCallEnrichmentApi() =
         runTest {

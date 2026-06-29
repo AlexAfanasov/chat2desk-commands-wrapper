@@ -1,9 +1,66 @@
 plugins {
     id("com.android.library")
-    id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.multiplatform")
+    id("org.jetbrains.kotlin.plugin.serialization")
     id("org.jlleitschuh.gradle.ktlint") version "12.1.1"
     id("io.gitlab.arturbosch.detekt") version "1.23.6"
     id("maven-publish")
+}
+
+kotlin {
+    applyDefaultHierarchyTemplate()
+
+    androidTarget {
+        publishLibraryVariants("release")
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
+        }
+    }
+
+    iosX64()
+    iosArm64()
+    iosSimulatorArm64()
+
+    sourceSets {
+        val commonMain by getting {
+            dependencies {
+                api("com.chat2desk:chat2desk_sdk:1.5.12")
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
+                implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+                implementation("io.ktor:ktor-client-core:3.0.0")
+                implementation("io.ktor:ktor-client-content-negotiation:3.0.0")
+                implementation("io.ktor:ktor-serialization-kotlinx-json:3.0.0")
+            }
+        }
+        val commonTest by getting {
+            dependencies {
+                implementation(kotlin("test"))
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+                implementation("io.ktor:ktor-client-mock:3.0.0")
+            }
+        }
+        val androidMain by getting {
+            dependencies {
+                implementation("io.ktor:ktor-client-okhttp:3.0.0")
+                implementation("com.squareup.okhttp3:okhttp:4.12.0")
+                implementation("com.google.code.gson:gson:2.10.1")
+            }
+        }
+        val androidUnitTest by getting {
+            dependencies {
+                implementation("junit:junit:4.13.2")
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+                implementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+                implementation("com.google.code.gson:gson:2.10.1")
+                implementation("com.google.truth:truth:1.4.2")
+            }
+        }
+        val iosMain by getting {
+            dependencies {
+                implementation("io.ktor:ktor-client-darwin:3.0.0")
+            }
+        }
+    }
 }
 
 android {
@@ -27,32 +84,9 @@ android {
         targetCompatibility = JavaVersion.VERSION_11
     }
 
-    kotlinOptions {
-        jvmTarget = "11"
-    }
-
     testOptions {
         unitTests.isIncludeAndroidResources = true
     }
-
-    publishing {
-        singleVariant("release") {
-            withSourcesJar()
-        }
-    }
-}
-
-dependencies {
-    api("com.chat2desk:chat2desk_sdk:1.5.8")
-
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("com.google.code.gson:gson:2.10.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
-
-    testImplementation("junit:junit:4.13.2")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
-    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
-    testImplementation("com.google.truth:truth:1.4.2")
 }
 
 ktlint {
@@ -69,15 +103,11 @@ detekt {
 
 afterEvaluate {
     publishing {
-        publications {
-            register<MavenPublication>("release") {
-                from(components["release"])
-                groupId =
-                    (project.findProperty("POM_GROUP") as String?)
-                        ?: "com.github.AlexAfanasov.chat2desk-commands-wrapper"
-                artifactId = "wrapper"
-                version = project.version.toString()
-            }
+        publications.withType<MavenPublication>().configureEach {
+            groupId =
+                (project.findProperty("POM_GROUP") as String?)
+                    ?: "com.github.AlexAfanasov.chat2desk-commands-wrapper"
+            version = project.version.toString()
         }
     }
 }
